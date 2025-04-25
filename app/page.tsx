@@ -1,103 +1,151 @@
-import Image from "next/image";
+"use client"
+
+import { useEffect, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { toast } from "sonner"
+import SearchBar from "@/components/SearchBar"
+import FilterPanel from "../components/filters/FilterPanel"
+import DoctorList from "../components/DoctorList"
+import { fetchDoctors } from "../lib/api"
+import { Doctor, FilterState } from "../lib/types"
+import { 
+  filterDoctors, 
+  sortDoctors, 
+  getUniqueSpecialties, 
+  urlParamsToFilterState,
+  filterStateToUrlParams
+} from "@/lib/utils"
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  
+  const [loading, setLoading] = useState(true)
+  const [allDoctors, setAllDoctors] = useState<Doctor[]>([])
+  const [filteredDoctors, setFilteredDoctors] = useState<Doctor[]>([])
+  const [specialties, setSpecialties] = useState<string[]>([])
+  const [filters, setFilters] = useState<FilterState>({
+    search: "",
+    consultationMode: null,
+    specialties: [],
+    sortBy: null
+  })
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // Initial data fetching
+  useEffect(() => {
+    const loadDoctors = async () => {
+      setLoading(true)
+      try {
+        const data = await fetchDoctors()
+        setAllDoctors(data)
+        setSpecialties(getUniqueSpecialties(data))
+        toast.success('Doctors loaded successfully')
+      } catch (error) {
+        toast.error('Failed to load doctors')
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    loadDoctors()
+  }, [])
+
+  // Handle URL params on first load
+  useEffect(() => {
+    if (allDoctors.length > 0 && searchParams) {
+      const urlFilters = urlParamsToFilterState(searchParams)
+      setFilters(urlFilters)
+    }
+  }, [allDoctors.length, searchParams])
+
+  // Apply filters when they change
+  useEffect(() => {
+    if (allDoctors.length > 0) {
+      const filtered = filterDoctors(allDoctors, filters)
+      const sorted = sortDoctors(filtered, filters.sortBy)
+      setFilteredDoctors(sorted)
+      
+      // Update URL
+      const params = filterStateToUrlParams(filters)
+      router.push(`?${params.toString()}`, { scroll: false })
+    }
+  }, [filters, allDoctors, router])
+
+  // Filter handlers
+  const handleSearchChange = (value: string) => {
+    setFilters(prev => ({ ...prev, search: value }))
+  }
+
+  const handleConsultationChange = (value: string) => {
+    setFilters(prev => ({
+      ...prev,
+      consultationMode: prev.consultationMode === value ? null : value
+    }))
+  }
+
+  const handleSpecialtyChange = (specialty: string) => {
+    setFilters(prev => {
+      const specialties = prev.specialties.includes(specialty)
+        ? prev.specialties.filter(s => s !== specialty)
+        : [...prev.specialties, specialty]
+      
+      return { ...prev, specialties }
+    })
+  }
+
+  const handleSortChange = (value: 'fees' | 'experience' | null) => {
+    setFilters(prev => ({
+      ...prev,
+      sortBy: prev.sortBy === value ? null : value
+    }))
+  }
+
+  return (
+    <main className="container mx-auto px-4 py-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Find Your Doctor</h1>
+        <p className="text-gray-600">Search from our network of qualified medical professionals</p>
+      </div>
+      
+      <div className="mb-8">
+        <SearchBar 
+          doctors={allDoctors} 
+          searchTerm={filters.search} 
+          onSearchChange={handleSearchChange} 
+        />
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {/* Filters */}
+        <div className="md:col-span-1">
+          <FilterPanel 
+            specialties={specialties}
+            filters={filters}
+            onConsultationChange={handleConsultationChange}
+            onSpecialtyChange={handleSpecialtyChange}
+            onSortChange={handleSortChange}
+          />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+        
+        {/* Doctor List */}
+        <div className="md:col-span-3">
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : (
+            <>
+              <div className="bg-white p-4 rounded-lg shadow-sm mb-4">
+                <p className="text-gray-700">
+                  <span className="font-medium">{filteredDoctors.length}</span> doctors found
+                  {filters.search && ` for "${filters.search}"`}
+                </p>
+              </div>
+              <DoctorList doctors={filteredDoctors} />
+            </>
+          )}
+        </div>
+      </div>
+    </main>
+  )
 }

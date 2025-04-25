@@ -1,7 +1,14 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  /* config options here */
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  output: 'export',
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  images: { unoptimized: true },
+  webpack: (config, { isServer }) => {
+    config.cache = false;
+    return config;
+  },
 };
 
-export default nextConfig;
+module.exports = nextConfig;
